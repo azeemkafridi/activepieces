@@ -122,6 +122,24 @@ describe('createTaskSubagentTools', () => {
         ] } })
     })
 
+    it('labels a researcher with its latest search or page read', async () => {
+        runAgentTurn.mockImplementation(async (params: { tools: ToolSet }) => {
+            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'Found it.', artifacts: [] }, EXECUTION_OPTIONS)
+            return {
+                ...turnResult(),
+                uiParts: [
+                    { type: PersistedAgentPartType.TOOL_CALL, toolCallId: 's1', toolName: 'ap_web_search', input: { query: 'asana pricing' }, status: PersistedToolCallStatus.COMPLETED, output: { results: [{ title: 'Asana plans', url: 'https://asana.com/pricing' }] } },
+                    { type: PersistedAgentPartType.TOOL_CALL, toolCallId: 'f1', toolName: 'ap_fetch_url', input: { url: 'https://asana.com/pricing' }, status: PersistedToolCallStatus.COMPLETED, output: { url: 'https://asana.com/pricing', content: 'Plans' } },
+                ],
+            }
+        })
+        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: toolSet(['ap_web_search']) })
+
+        const result = await tasks['ap_run_task'].execute?.({ title: 'Research', brief: 'Find out' }, EXECUTION_OPTIONS)
+
+        expect(result).toMatchObject({ activity: { statusLine: 'Asana plans' } })
+    })
+
     it('keeps the links of a search too large to return in full', async () => {
         const truncated = JSON.stringify({ query: 'pricing', results: [{ title: 'Plans', url: 'https://ok.com/plans' }] })
         runAgentTurn.mockImplementation(async (params: { tools: ToolSet }) => {

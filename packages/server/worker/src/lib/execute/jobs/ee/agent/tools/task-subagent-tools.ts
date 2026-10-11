@@ -238,11 +238,11 @@ function fallbackResult(turn: AgentTurnResult): TaskResult {
 
 function runningActivity({ title, uiParts, startedAt }: { title: string, uiParts: PersistedAgentPart[], startedAt: Date }): SubagentActivity {
     const timeline = timelineFrom(uiParts)
-    const statuses = timeline.flatMap((entry) => entry.kind === 'status' ? [entry.text] : [])
+    const latest = timeline.at(-1)
     return {
         title,
         status: 'running',
-        statusLine: statuses[statuses.length - 1],
+        statusLine: isNil(latest) ? undefined : timelineLine(latest),
         timeline,
         stepCount: uiParts.filter((part) => part.type === PersistedAgentPartType.TOOL_CALL).length,
         pieces: piecesFrom(uiParts),
@@ -288,6 +288,17 @@ function capPageText(result: unknown): unknown {
 
 function isTitledToolCall(part: PersistedAgentPart): part is Extract<PersistedAgentPart, { type: PersistedAgentPartType.TOOL_CALL }> & { title: string } {
     return part.type === PersistedAgentPartType.TOOL_CALL && !isNil(part.title) && part.title.trim().length > 0
+}
+
+function timelineLine(entry: SubagentTimelineEntry): string {
+    switch (entry.kind) {
+        case 'status':
+            return entry.text
+        case 'search':
+            return entry.query
+        case 'read':
+            return entry.title ?? entry.url
+    }
 }
 
 function timelineFrom(parts: PersistedAgentPart[]): SubagentTimelineEntry[] {
