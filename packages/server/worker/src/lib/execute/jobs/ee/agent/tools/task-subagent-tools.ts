@@ -220,7 +220,7 @@ function runningActivity({ title, uiParts, startedAt }: { title: string, uiParts
     return {
         title,
         status: 'running',
-        statusLine: statuses[statuses.length - 1] ?? lastToolTitle(uiParts),
+        statusLine: statuses[statuses.length - 1],
         timeline,
         stepCount: uiParts.filter((part) => part.type === PersistedAgentPartType.TOOL_CALL).length,
         pieces: piecesFrom(uiParts),
@@ -240,16 +240,15 @@ function finalActivity({ title, turn, result, startedAt }: { title: string, turn
     }
 }
 
-function lastToolTitle(parts: PersistedAgentPart[]): string | undefined {
-    return parts.filter(isTitledToolCall).at(-1)?.title.trim()
-}
-
 function isTitledToolCall(part: PersistedAgentPart): part is Extract<PersistedAgentPart, { type: PersistedAgentPartType.TOOL_CALL }> & { title: string } {
     return part.type === PersistedAgentPartType.TOOL_CALL && !isNil(part.title) && part.title.trim().length > 0
 }
 
 function timelineFrom(parts: PersistedAgentPart[]): SubagentTimelineEntry[] {
     return parts.flatMap((part): SubagentTimelineEntry[] => {
+        if (isTitledToolCall(part)) {
+            return [{ kind: 'status', text: part.title.trim() }]
+        }
         if (part.type !== PersistedAgentPartType.THINKING_STATUS) {
             return []
         }
