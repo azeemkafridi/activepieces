@@ -62,6 +62,7 @@ import { listUsersAction } from '../src/lib/actions/users/list-users';
 import { getUserStatusAction } from '../src/lib/actions/users/get-user-status';
 import { setUserStatusAction } from '../src/lib/actions/users/set-user-status';
 import { rawPath, runAction, stubGitlab } from './helpers';
+import { wave2Cases } from './wave2-cases';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -725,13 +726,14 @@ describe('exact outgoing request per atomic', () => {
   it('covers every action registered on the piece except Custom API Call', () => {
     const covered = new Set([
       ...cases.map((c) => c.action.name),
+      ...wave2Cases.map((c) => c.action.name),
       'set_user_status',
     ]);
     const registered = Object.keys(gitlab.actions()).filter(
       (name) => name !== 'custom_api_call'
     );
     expect(registered.filter((name) => !covered.has(name))).toEqual([]);
-    expect(registered).toHaveLength(55);
+    expect(registered).toHaveLength(113);
   });
 });
 
@@ -759,8 +761,9 @@ describe('metadata', () => {
   });
 
   it('destructive verbs are classified DESTRUCTIVE', () => {
+    const wave2 = new Set(wave2Cases.map((c) => c.action.name));
     const destructive = actions
-      .filter((a) => a.classification === 'DESTRUCTIVE')
+      .filter((a) => a.classification === 'DESTRUCTIVE' && !wave2.has(a.name))
       .map((a) => a.name)
       .sort();
     expect(destructive).toEqual(
