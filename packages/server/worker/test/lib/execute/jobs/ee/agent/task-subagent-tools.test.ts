@@ -35,7 +35,7 @@ describe('createTaskSubagentTools', () => {
         const result = await tasks['ap_run_task'].execute?.({ title: 'Build Save order', brief: 'Build the Save order flow' }, EXECUTION_OPTIONS)
 
         const params = runAgentTurn.mock.calls[0][0]
-        expect(Object.keys(params.tools).sort()).toEqual(['ap_build_flow', 'ap_execute_action', 'ap_set_phase', 'ap_web_search', TASK_COMPLETION_TOOL_NAME].sort())
+        expect(Object.keys(params.tools).sort()).toEqual(['ap_build_flow', 'ap_execute_action', 'ap_web_search', TASK_COMPLETION_TOOL_NAME].sort())
         expect(params.allToolNames).toContain(TASK_COMPLETION_TOOL_NAME)
         expect(params.systemPrompt).toBe('TASK PROMPT')
         expect(params.phaseState).toEqual({ phase: 'build' })
@@ -61,27 +61,6 @@ describe('createTaskSubagentTools', () => {
         expect(emitSubagentProgress.mock.calls.map(([event]) => event.data.statusLine)).toContain('Checking the Gmail connection')
         expect(result).toMatchObject({ status: 'blocked', needs: 'A Gmail connection' })
         expect(finishTask).toHaveBeenCalledWith(expect.objectContaining({ status: 'BLOCKED' }))
-    })
-
-    it('switches its own phase, never the main chat\'s', async () => {
-        const mainPhase = { phase: 'build' }
-        const mainSetPhase = tool({ description: 'main', inputSchema: z.object({ phase: z.string() }), execute: async ({ phase }) => {
-            mainPhase.phase = phase
-            return 'ok'
-        } })
-        let taskPhase: string | undefined
-        runAgentTurn.mockImplementation(async (params: { tools: ToolSet, phaseState: { phase: string } }) => {
-            await params.tools['ap_set_phase'].execute?.({ phase: 'discovery' }, EXECUTION_OPTIONS)
-            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'Built.', artifacts: [] }, EXECUTION_OPTIONS)
-            taskPhase = params.phaseState.phase
-            return turnResult()
-        })
-        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: { ...toolSet(['ap_build_flow']), ap_set_phase: mainSetPhase } })
-
-        await tasks['ap_run_task'].execute?.({ title: 'Build', brief: 'Build it' }, EXECUTION_OPTIONS)
-
-        expect(taskPhase).toBe('discovery')
-        expect(mainPhase.phase).toBe('build')
     })
 
     it('sends the growing timeline with every live update', async () => {
@@ -188,7 +167,7 @@ describe('createTaskSubagentTools', () => {
         expect(view).toEqual({ type: 'text', value: JSON.stringify({ taskId: 'task-1', status: 'done', summary: 'ok', artifacts: [] }) })
     })
 
-    it('asks a task that stopped without reporting for its result, with only the report tool', async () => {
+    it('asks a task that stopped without reporting for its result, keeping its tools so the cache holds', async () => {
         runAgentTurn
             .mockResolvedValueOnce(turnResult())
             .mockImplementationOnce(async (params: { tools: ToolSet }) => {
@@ -199,9 +178,9 @@ describe('createTaskSubagentTools', () => {
 
         const result = await tasks['ap_run_task'].execute?.({ title: 'Research Asana', brief: 'Find pricing' }, EXECUTION_OPTIONS)
 
-        const reportParams = runAgentTurn.mock.calls[1][0]
-        expect(Object.keys(reportParams.tools)).toEqual([TASK_COMPLETION_TOOL_NAME])
-        expect(reportParams.stepCeiling).toBe(1)
+        const [workParams, reportParams] = runAgentTurn.mock.calls.map(([params]) => params)
+        expect(Object.keys(reportParams.tools)).toEqual(Object.keys(workParams.tools))
+        expect(reportParams.stepCeiling).toBe(2)
         expect(result).toMatchObject({ status: 'done', summary: 'Asana costs $13.49 a seat.' })
     })
 
@@ -346,21 +325,78 @@ describe('createTaskSubagentTools', () => {
         expect(result).toMatchObject({ status: 'done', summary: 'Saved on retry.' })
     })
 
-    it('gives every task its own guides, so a guide the main chat loaded still reaches the task', async () => {
-        const guideResults: unknown[] = []
-        runAgentTurn.mockImplementation(async (params: { tools: ToolSet }) => {
-            guideResults.push(await params.tools['ap_load_guide'].execute?.({ topic: 'build_flow' }, EXECUTION_OPTIONS))
-            guideResults.push(await params.tools['ap_load_guide'].execute?.({ topic: 'build_flow' }, EXECUTION_OPTIONS))
-            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'ok', artifacts: [] }, EXECUTION_OPTIONS)
-            return turnResult()
-        })
-        const mainGuide = tool({ description: 'Load a guide', inputSchema: z.object({ topic: z.string() }), execute: async () => 'You already loaded the "build_flow" guide earlier in this turn' })
-        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: { ...toolSet(['ap_build_flow']), ap_load_guide: mainGuide } })
+    it('loads its guides as skills and keeps them for the report turn', async () => {
+        runAgentTurn
+            .mockResolvedValueOnce(turnResult())
+            .mockImplementationOnce(async (params: { tools: ToolSet }) => {
+                await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'ok', artifacts: [] }, EXECUTION_OPTIONS)
+                return turnResult()
+            })
+        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: toolSet(['ap_build_flow']) })
 
         await tasks['ap_run_task'].execute?.({ title: 'Build', brief: 'Build it' }, EXECUTION_OPTIONS)
 
-        expect(guideResults[0]).toBe('BUILD FLOW GUIDE')
-        expect(guideResults[1]).toEqual(expect.stringContaining('earlier in this task'))
+        const [workTurn, reportTurn] = runAgentTurn.mock.calls.map(([params]) => params)
+        expect(workTurn.skills).toEqual({ surface: 'CHAT', guides: BASE_PARAMS.guides })
+        expect(reportTurn.skills).toEqual(workTurn.skills)
+    })
+
+    it('never gives a task the status tool, so no step is spent on status alone', async () => {
+        runAgentTurn.mockImplementation(async (params: { tools: ToolSet }) => {
+            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'ok', artifacts: [] }, EXECUTION_OPTIONS)
+            return turnResult()
+        })
+        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: toolSet(['ap_build_flow', 'ap_update_thinking_status']) })
+
+        await tasks['ap_run_task'].execute?.({ title: 'Build', brief: 'Build it' }, EXECUTION_OPTIONS)
+
+        expect(Object.keys(runAgentTurn.mock.calls[0][0].tools)).not.toContain('ap_update_thinking_status')
+    })
+
+    it('gives researchers only the search and page tools, on the research models, with no skills', async () => {
+        runAgentTurn.mockImplementation(async (params: { tools: ToolSet }) => {
+            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'ok', artifacts: [] }, EXECUTION_OPTIONS)
+            return turnResult()
+        })
+        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: toolSet(['ap_web_search', 'ap_fetch_url', 'ap_scrape_url', 'ap_build_flow', 'ap_execute_action']) })
+
+        await tasks['ap_deep_research'].execute?.({ question: 'Pricing', subjects: ['Asana'] }, EXECUTION_OPTIONS)
+
+        const params = runAgentTurn.mock.calls[0][0]
+        expect(Object.keys(params.tools).sort()).toEqual(['ap_fetch_url', 'ap_scrape_url', 'ap_web_search', TASK_COMPLETION_TOOL_NAME].sort())
+        expect(params.models).toBe(RESEARCH_MODELS)
+        expect(params.skills).toBeUndefined()
+    })
+
+    it('cuts a page a researcher reads down to a small budget', async () => {
+        let pageSize = 0
+        runAgentTurn.mockImplementation(async (params: { tools: ToolSet }) => {
+            const page = await params.tools['ap_fetch_url'].execute?.({}, EXECUTION_OPTIONS)
+            pageSize = JSON.stringify(page).length
+            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'ok', artifacts: [] }, EXECUTION_OPTIONS)
+            return turnResult()
+        })
+        const bigPage = tool({ description: 'fetch', inputSchema: z.object({}), execute: async () => ({ url: 'https://big.com', content: 'x'.repeat(200 * 1024) }) })
+        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: { ...toolSet(['ap_web_search']), ap_fetch_url: bigPage } })
+
+        await tasks['ap_deep_research'].execute?.({ question: 'Pricing', subjects: ['Asana'] }, EXECUTION_OPTIONS)
+
+        expect(pageSize).toBeGreaterThan(0)
+        expect(pageSize).toBeLessThan(40 * 1024)
+    })
+
+    it('shows the latest step title on the card when the task sends no status', async () => {
+        runAgentTurn.mockImplementation(async (params: { tools: ToolSet, sinks: { onProgress: (progress: { uiParts: unknown[] }) => void } }) => {
+            params.sinks.onProgress({ uiParts: [{ type: PersistedAgentPartType.TOOL_CALL, toolCallId: 'b1', toolName: 'ap_build_flow', title: 'Building your intake flow', input: {}, status: PersistedToolCallStatus.COMPLETED }] })
+            await params.tools[TASK_COMPLETION_TOOL_NAME].execute?.({ status: 'done', summary: 'ok', artifacts: [] }, EXECUTION_OPTIONS)
+            return turnResult()
+        })
+        const tasks = createTaskSubagentTools({ ...BASE_PARAMS, tools: toolSet(['ap_build_flow']) })
+
+        await tasks['ap_run_task'].execute?.({ title: 'Build', brief: 'Build it' }, EXECUTION_OPTIONS)
+
+        const lines = emitSubagentProgress.mock.calls.map(([event]) => event.data.statusLine)
+        expect(lines).toContain('Building your intake flow')
     })
 
     it('never gives a task the tools that create, change or publish saved agents', async () => {
@@ -409,9 +445,12 @@ const finishTask = vi.fn()
 
 const MODELS: RunAgentTurnParams['models'] = [{ model: 'test-model', provider: AIProviderName.OPENAI, modelId: 'm', thinkingBudget: 0 }]
 
+const RESEARCH_MODELS: RunAgentTurnParams['models'] = [{ model: 'fast-model', provider: AIProviderName.OPENAI, modelId: 'fast', thinkingBudget: 0 }]
+
 const BASE_PARAMS = {
     guides: { build_flow: 'BUILD FLOW GUIDE' },
     models: MODELS,
+    researchModels: RESEARCH_MODELS,
     tier: { id: 'smart', thinkingBudget: 0, modelId: 'm' },
     taskPrompt: 'TASK PROMPT',
     creditsLeftFor: () => undefined,
