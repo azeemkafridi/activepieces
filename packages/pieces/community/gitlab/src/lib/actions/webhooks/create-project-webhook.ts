@@ -60,8 +60,6 @@ export function hookBody(propsValue: Record<string, unknown>): Record<string, un
   }
   const ssl = triStateValue(propsValue['enableSslVerification']);
   if (ssl !== undefined) body['enable_ssl_verification'] = ssl;
-  const token = typeof propsValue['token'] === 'string' && propsValue['token'].length > 0 ? propsValue['token'] : undefined;
-  if (token !== undefined) body['token'] = token;
   return body;
 }
 
@@ -75,11 +73,6 @@ export function withoutToken(hook: unknown): unknown {
 export const hookCommonProps = () => ({
   name: Property.ShortText({ displayName: 'Name', required: false }),
   description: Property.LongText({ displayName: 'Description', required: false }),
-  token: Property.ShortText({
-    displayName: 'Secret Token',
-    description: 'Sent by GitLab in the X-Gitlab-Token header so the receiver can verify calls. Never returned in the output.',
-    required: false,
-  }),
   pushEventsBranchFilter: Property.ShortText({ displayName: 'Push Branch Filter', description: 'Only push events for branches matching this wildcard, e.g. main or release/*.', required: false }),
   enableSslVerification: gitlabProps.triState('SSL Verification', 'Leave empty for the GitLab default (yes).'),
 });
@@ -92,7 +85,7 @@ export const createProjectWebhookAction = createAction({
   audience: 'ai',
   classification: 'WRITE',
   aiMetadata: {
-    description: 'Adds a webhook to a GitLab project that POSTs to a URL on the events set to yes (push events default to yes in GitLab, the rest to no). An optional secret token is sent in X-Gitlab-Token and never returned. Each call adds another webhook, even for the same URL; check List Project Webhooks first. Requires Maintainer role.',
+    description: 'Adds a webhook to a GitLab project that POSTs to a URL on the events set to yes (push events default to yes in GitLab, the rest to no). No secret token is set here so it never lands in run history; add one in GitLab if the receiver needs it. Each call adds another webhook, even for the same URL; check List Project Webhooks first. Requires Maintainer role.',
     idempotent: false,
   },
   props: {

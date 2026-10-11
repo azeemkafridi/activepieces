@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { httpClient } from '@activepieces/pieces-common';
 import { gitlab } from '../src';
 import { createPipelineAction } from '../src/lib/actions/ci/create-pipeline';
 import { getPipelineAction } from '../src/lib/actions/ci/get-pipeline';
@@ -110,7 +109,9 @@ describe('wave 2: rule checks', () => {
     await expect(runAction({ action: createMilestoneAction, propsValue: { ...P, title: 'v', dueDate: 'next week' } })).rejects.toThrow('YYYY-MM-DD');
     await expect(runAction({ action: updateMilestoneAction, propsValue: { ...P, milestoneId: 1 } })).rejects.toThrow('Set at least one field');
     await expect(runAction({ action: createProjectWebhookAction, propsValue: { ...P, url: 'ftp://x.example' } })).rejects.toThrow('http');
-    await expect(runAction({ action: updateProjectWebhookAction, propsValue: { ...P, hookId: 1 } })).rejects.toThrow('Set at least one field');
+    await expect(runAction({ action: updateProjectWebhookAction, propsValue: { ...P, hookId: 1 } })).rejects.toThrow('URL');
+    await expect(runAction({ action: updateProjectWebhookAction, propsValue: { ...P, hookId: 1, url: 'https://x.example', description: 'd', clearFields: ['description'] } })).rejects.toThrow('both set and cleared');
+    await expect(runAction({ action: updateProjectWebhookAction, propsValue: { ...P, hookId: 1, url: 'https://x.example', clearFields: ['token'] } })).rejects.toThrow('Unknown field');
     expect(seen).toHaveLength(0);
   });
 
@@ -174,23 +175,17 @@ describe('wave 2: rule checks', () => {
     expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toEqual({ jobId: 2, log: 'all good', truncated: false, totalLength: 8 });
   });
 
-  it('update_project_webhook keeps the current URL when none is given and never returns the token', async () => {
-    const seen = stubGitlab([{ body: { id: 3, url: 'https://keep.example/h' } }, { body: { id: 3, url: 'https://keep.example/h', token: 'x' } }]);
-    const result = await runAction({ action: updateProjectWebhookAction, propsValue: { ...P, hookId: 3, token: 'new-secret', pipelineEvents: 'false' } });
-    expect(seen.map((s) => s.method)).toEqual(['GET', 'PUT']);
-    expect(seen[1].body).toEqual({ url: 'https://keep.example/h', token: 'new-secret', pipeline_events: false });
+  it('update_project_webhook sends only the given URL, never reads it back, and strips tokens', async () => {
+    const seen = stubGitlab([{ body: { id: 3, url: 'https://keep.example/h', token: 'x' } }]);
+    const result = await runAction({ action: updateProjectWebhookAction, propsValue: { ...P, hookId: 3, url: 'https://keep.example/h', pipelineEvents: 'false', clearFields: ['description'] } });
+    expect(seen.map((s) => s.method)).toEqual(['PUT']);
+    expect(seen[0].body).toEqual({ url: 'https://keep.example/h', pipeline_events: false, description: '' });
     expect(result).toEqual({ id: 3, url: 'https://keep.example/h' });
   });
 
-  it('webhook secrets go through native fetch only and never reach logs or error text', async () => {
-    const httpSpy = vi.spyOn(httpClient, 'sendRequest');
-    const consoleSpy = vi.spyOn(console, 'error');
-    stubGitlab([{ status: 422, body: { message: { url: ['is blocked'] } } }]);
-    const error = await runAction({ action: createProjectWebhookAction, propsValue: { ...P, url: 'https://x.example/h', token: 'TOP-SECRET' } }).catch((e: unknown) => e);
-    expect(error).toBeInstanceOf(Error);
-    expect(String(error)).not.toContain('TOP-SECRET');
-    expect(httpSpy).not.toHaveBeenCalled();
-    expect(consoleSpy).not.toHaveBeenCalled();
+  it('webhook actions take no secret token input', () => {
+    expect(Object.keys(createProjectWebhookAction.props)).not.toContain('token');
+    expect(Object.keys(updateProjectWebhookAction.props)).not.toContain('token');
   });
 
   it('list_project_webhooks strips tokens and keeps paging', async () => {
