@@ -11,8 +11,6 @@ export const MAX_LOG_CHARS = 100_000;
 const ANSI_ESCAPE = /\u001b\[[0-9;?]*[A-Za-z]/g;
 const SECTION_MARKER = /section_(?:start|end):\d+:[A-Za-z0-9_.-]+(?:\[[^\]\r\n]*\])?/g;
 
-// Drops colour codes and GitLab's collapsible-section markers, and keeps what
-// a terminal would show for a line rewritten with a carriage return.
 export function cleanLog(text: string): string {
   return text
     .replace(ANSI_ESCAPE, '')
