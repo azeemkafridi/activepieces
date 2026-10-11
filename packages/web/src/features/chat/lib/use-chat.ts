@@ -91,7 +91,6 @@ function restoreReceiptsIntoStore({
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const AGENT_POLL_INTERVAL_MS = 5_000;
-const TASK_PANEL_DOCKS_FROM = '(min-width: 1024px)';
 const TOOL_GATES_WITHOUT_A_PIECE = new Set([
   'ap_send_email',
   'ap_test_flow',
@@ -264,10 +263,6 @@ function progressOf(activity: SubagentActivity): number {
   return activity.stepCount + (activity.timeline?.length ?? 0);
 }
 
-function isWideScreen(): boolean {
-  return window.matchMedia(TASK_PANEL_DOCKS_FROM).matches;
-}
-
 const ALLOWED_MIME_SET: ReadonlySet<string> = new Set(CHAT_ALLOWED_MIME_TYPES);
 
 function isAllowedMimeType(value: string): value is AgentAllowedMimeType {
@@ -433,7 +428,7 @@ export function useAgentChat({
         const opensPanel =
           prev.taskPanelAutoOpen &&
           prev.taskPanelToolCallId === null &&
-          isWideScreen() &&
+          chatStoreSelectors.taskPanelDocks(prev) &&
           (event.data.timeline ?? []).some((entry) => entry.kind === 'search');
         return {
           toolCallMeta: {

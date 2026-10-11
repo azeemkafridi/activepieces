@@ -400,7 +400,7 @@ describe('createTaskSubagentTools', () => {
 
         await tasks['ap_deep_research'].execute?.({ question: 'Pricing', subjects: ['Asana'] }, EXECUTION_OPTIONS)
 
-        expect(pageSize).toBeGreaterThan(0)
+        expect(pageSize).toBeGreaterThan(30_000)
         expect(pageSize).toBeLessThan(40 * 1024)
     })
 

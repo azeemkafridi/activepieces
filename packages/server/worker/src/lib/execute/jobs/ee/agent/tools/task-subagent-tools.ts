@@ -5,7 +5,7 @@ import pLimit from 'p-limit'
 import { z } from 'zod'
 import { AgentTurnResult, runAgentTurn, RunAgentTurnParams } from '../run-agent-turn'
 import { taskContext } from './task-context'
-import { AgentEventEmitter, extractResultText, fitResultToBudget } from './tool-primitives'
+import { AgentEventEmitter, extractResultText } from './tool-primitives'
 
 export function createTaskSubagentTools({ tools, taskPrompt, ...rest }: Omit<TaskDeps, 'workerTools' | 'taskPrompt'> & {
     tools: ToolSet
@@ -273,7 +273,17 @@ function withPageBudget(pageTool: ToolSet[string]): ToolSet[string] {
     if (isNil(execute)) {
         return pageTool
     }
-    return { ...pageTool, execute: async (input, options) => fitResultToBudget({ result: await execute(input, options), maxBytes: RESEARCH_PAGE_BYTES }) }
+    return { ...pageTool, execute: async (input, options) => capPageText(await execute(input, options)) }
+}
+
+function capPageText(result: unknown): unknown {
+    if (!isObject(result)) {
+        return result
+    }
+    return Object.fromEntries(Object.entries(result).map(([key, value]) => {
+        const isLongPageText = PAGE_TEXT_KEYS.includes(key) && typeof value === 'string' && value.length > RESEARCH_PAGE_CHARS
+        return isLongPageText ? [key, `${value.slice(0, RESEARCH_PAGE_CHARS)}\n…[page cut at ${RESEARCH_PAGE_CHARS} characters]`] : [key, value]
+    }))
 }
 
 function isTitledToolCall(part: PersistedAgentPart): part is Extract<PersistedAgentPart, { type: PersistedAgentPartType.TOOL_CALL }> & { title: string } {
@@ -411,7 +421,8 @@ const REPORT_STEPS = 2
 const WEB_SEARCH_TOOL = 'ap_web_search'
 const PAGE_READ_TOOLS = ['ap_fetch_url', 'ap_scrape_url']
 const RESEARCH_TOOLS = [WEB_SEARCH_TOOL, ...PAGE_READ_TOOLS]
-const RESEARCH_PAGE_BYTES = 32 * 1024
+const RESEARCH_PAGE_CHARS = 32_000
+const PAGE_TEXT_KEYS = ['content', 'markdown']
 const LARGE_RESPONSE_MARKER = '[LARGE RESPONSE'
 
 const TASK_PROFILES: Record<TaskKind, (deps: TaskDeps) => TaskProfile> = {
