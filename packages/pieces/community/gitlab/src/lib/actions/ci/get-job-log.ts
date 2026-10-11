@@ -8,10 +8,21 @@ import { jobLogOutputSchema } from '../../output-schemas-admin';
 export const DEFAULT_LOG_CHARS = 20_000;
 export const MAX_LOG_CHARS = 100_000;
 
-const ANSI_ESCAPE = /\u001b\[[0-9;]*[A-Za-z]/g;
+const ANSI_ESCAPE = /\u001b\[[0-9;?]*[A-Za-z]/g;
+const SECTION_MARKER = /section_(?:start|end):\d+:[A-Za-z0-9_.-]+(?:\[[^\]\r\n]*\])?/g;
 
+// Drops colour codes and GitLab's collapsible-section markers, and keeps what
+// a terminal would show for a line rewritten with a carriage return.
 export function cleanLog(text: string): string {
-  return text.replace(ANSI_ESCAPE, '').replace(/\r/g, '');
+  return text
+    .replace(ANSI_ESCAPE, '')
+    .replace(SECTION_MARKER, '')
+    .split('\n')
+    .map((line) => {
+      const body = line.endsWith('\r') ? line.slice(0, -1) : line;
+      return body.slice(body.lastIndexOf('\r') + 1);
+    })
+    .join('\n');
 }
 
 export const getJobLogAction = createAction({

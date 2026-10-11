@@ -170,6 +170,11 @@ describe('wave 2: rule checks', () => {
     expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toEqual({ jobId: 2, log: 'Job succeeded\n', truncated: false, totalLength: 14 });
   });
 
+  it('get_job_log drops section markers and keeps the last carriage-return rewrite', async () => {
+    stubGitlab([{ body: 'section_start:1700000000:step_script[collapsed=true]\r\u001b[0KRun\nprogress 10%\rprogress 100%\nsection_end:1700000001:step_script\r\u001b[0K\n' }]);
+    expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toMatchObject({ log: 'Run\nprogress 100%\n\n' });
+  });
+
   it('get_job_log returns a short log whole', async () => {
     stubGitlab([{ body: 'all good' }]);
     expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toEqual({ jobId: 2, log: 'all good', truncated: false, totalLength: 8 });
