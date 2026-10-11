@@ -2,7 +2,7 @@ import { SubagentActivity } from '@activepieces/shared';
 import { t } from 'i18next';
 import { Check, Loader2, Maximize2, Minimize2, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { createContext, useContext, useRef, useState } from 'react';
+import { createContext, useEffect, useRef, useState } from 'react';
 
 import {
   ChatContainerContent,
@@ -10,6 +10,8 @@ import {
 } from '@/components/prompt-kit/chat-container';
 import { Markdown } from '@/components/prompt-kit/markdown';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { chatStoreSelectors } from '@/features/chat/lib/chat-store';
+import { useChatStoreContext } from '@/features/chat/lib/chat-store-context';
 import { useElementSize } from '@/hooks/use-element-size';
 import { cn } from '@/lib/utils';
 
@@ -124,20 +126,22 @@ export function TaskPanelLayout({ children }: { children: React.ReactNode }) {
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const roomRef = useRef<HTMLDivElement>(null);
   const room = useElementSize(roomRef);
+  const setChatAreaWidth = useChatStoreContext(
+    (state) => state.setChatAreaWidth,
+  );
+  useEffect(() => setChatAreaWidth(room.width), [room.width, setChatAreaWidth]);
   return (
     <TaskPanelSlotContext.Provider value={slot}>
-      <TaskPanelRoomContext.Provider value={room.width}>
-        <div ref={roomRef} className="flex h-full min-w-0 flex-1">
-          {children}
-          <div ref={setSlot} className="contents" />
-        </div>
-      </TaskPanelRoomContext.Provider>
+      <div ref={roomRef} className="flex h-full min-w-0 flex-1">
+        {children}
+        <div ref={setSlot} className="contents" />
+      </div>
     </TaskPanelSlotContext.Provider>
   );
 }
 
 function useDocked(): boolean {
-  return useContext(TaskPanelRoomContext) >= DOCKED_MIN_ROOM;
+  return useChatStoreContext(chatStoreSelectors.taskPanelDocks);
 }
 
 function TaskDetails({
@@ -246,7 +250,3 @@ function Section({
 }
 
 export const TaskPanelSlotContext = createContext<HTMLElement | null>(null);
-
-const TaskPanelRoomContext = createContext(0);
-
-const DOCKED_MIN_ROOM = 1024;
