@@ -130,6 +130,22 @@ export function TaskPanel({
   );
 }
 
+export function TaskPanelLayout({ children }: { children: React.ReactNode }) {
+  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const roomRef = useRef<HTMLDivElement>(null);
+  const room = useElementSize(roomRef);
+  return (
+    <TaskPanelSlotContext.Provider value={slot}>
+      <TaskPanelRoomContext.Provider value={room.width}>
+        <div ref={roomRef} className="flex h-full min-w-0 flex-1">
+          {children}
+          <div ref={setSlot} className="contents" />
+        </div>
+      </TaskPanelRoomContext.Provider>
+    </TaskPanelSlotContext.Provider>
+  );
+}
+
 function useDocked(): boolean {
   return useContext(TaskPanelRoomContext) >= DOCKED_MIN_ROOM;
 }
@@ -335,22 +351,6 @@ function Section({
       <p className="pb-2 text-xs font-medium text-gray-11">{title}</p>
       {children}
     </section>
-  );
-}
-
-export function TaskPanelLayout({ children }: { children: React.ReactNode }) {
-  const [slot, setSlot] = useState<HTMLDivElement | null>(null);
-  const roomRef = useRef<HTMLDivElement>(null);
-  const room = useElementSize(roomRef);
-  return (
-    <TaskPanelSlotContext.Provider value={slot}>
-      <TaskPanelRoomContext.Provider value={room.width}>
-        <div ref={roomRef} className="flex h-full min-w-0 flex-1">
-          {children}
-          <div ref={setSlot} className="contents" />
-        </div>
-      </TaskPanelRoomContext.Provider>
-    </TaskPanelSlotContext.Provider>
   );
 }
 
