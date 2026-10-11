@@ -17,7 +17,7 @@ export function cleanLog(text: string): string {
     .replace(SECTION_MARKER, '')
     .split('\n')
     .map((line) => {
-      const body = line.endsWith('\r') ? line.slice(0, -1) : line;
+      const body = line.replace(/\r+$/, '');
       return body.slice(body.lastIndexOf('\r') + 1);
     })
     .join('\n');

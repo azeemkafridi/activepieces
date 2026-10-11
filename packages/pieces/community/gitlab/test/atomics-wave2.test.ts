@@ -175,6 +175,11 @@ describe('wave 2: rule checks', () => {
     expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toMatchObject({ log: 'Run\nprogress 100%\n\n' });
   });
 
+  it('get_job_log keeps a line that ends in repeated carriage returns', async () => {
+    stubGitlab([{ body: 'ERROR: build failed\r\r\nnext\r\r' }]);
+    expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toMatchObject({ log: 'ERROR: build failed\nnext' });
+  });
+
   it('get_job_log returns a short log whole', async () => {
     stubGitlab([{ body: 'all good' }]);
     expect(await runAction({ action: getJobLogAction, propsValue: { ...P, jobId: 2 } })).toEqual({ jobId: 2, log: 'all good', truncated: false, totalLength: 8 });
