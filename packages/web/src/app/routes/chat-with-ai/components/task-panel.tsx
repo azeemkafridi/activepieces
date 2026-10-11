@@ -2,7 +2,7 @@ import { SubagentActivity, SubagentTimelineEntry } from '@activepieces/shared';
 import { t } from 'i18next';
 import { Check, Loader2, Maximize2, Minimize2, Search, X } from 'lucide-react';
 import { motion } from 'motion/react';
-import { createContext, useState, useSyncExternalStore } from 'react';
+import { createContext, useContext, useRef, useState } from 'react';
 
 import {
   ChatContainerContent,
@@ -15,6 +15,7 @@ import {
   Source,
 } from '@/components/prompt-kit/source';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useElementSize } from '@/hooks/use-element-size';
 import { cn } from '@/lib/utils';
 
 import { PreviewIconButton } from './previews/preview-card';
@@ -130,17 +131,7 @@ export function TaskPanel({
 }
 
 function useDocked(): boolean {
-  return useSyncExternalStore(
-    subscribeToDocking,
-    () => window.matchMedia(DOCKED_MEDIA_QUERY).matches,
-    () => true,
-  );
-}
-
-function subscribeToDocking(onChange: () => void): () => void {
-  const query = window.matchMedia(DOCKED_MEDIA_QUERY);
-  query.addEventListener('change', onChange);
-  return () => query.removeEventListener('change', onChange);
+  return useContext(TaskPanelRoomContext) >= DOCKED_MIN_ROOM;
 }
 
 function TaskDetails({
@@ -349,17 +340,23 @@ function Section({
 
 export function TaskPanelLayout({ children }: { children: React.ReactNode }) {
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const roomRef = useRef<HTMLDivElement>(null);
+  const room = useElementSize(roomRef);
   return (
     <TaskPanelSlotContext.Provider value={slot}>
-      <div className="flex h-full min-w-0 flex-1">
-        {children}
-        <div ref={setSlot} className="contents" />
-      </div>
+      <TaskPanelRoomContext.Provider value={room.width}>
+        <div ref={roomRef} className="flex h-full min-w-0 flex-1">
+          {children}
+          <div ref={setSlot} className="contents" />
+        </div>
+      </TaskPanelRoomContext.Provider>
     </TaskPanelSlotContext.Provider>
   );
 }
 
 export const TaskPanelSlotContext = createContext<HTMLElement | null>(null);
 
-const DOCKED_MEDIA_QUERY = '(min-width: 1024px)';
+const TaskPanelRoomContext = createContext(0);
+
+const DOCKED_MIN_ROOM = 1024;
 const MAX_SEARCH_RESULTS = 4;

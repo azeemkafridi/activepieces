@@ -425,6 +425,7 @@ const NOT_FOR_TASKS = [
     RESEARCH_TOOL_NAME,
     ...AGENT_SURFACE_TOOLS,
     'ap_update_thinking_status',
+    'ap_send_email',
     'ap_show_questions',
     'ap_show_quick_replies',
     'ap_show_connection_picker',
