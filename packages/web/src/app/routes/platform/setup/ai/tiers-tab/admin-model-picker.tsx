@@ -23,7 +23,6 @@ import {
   ModelPickerItem,
   ModelPickerPopover,
 } from '@/features/agents/ai-model/model-picker-popover';
-import { cn } from '@/lib/utils';
 
 import { KeyStatusBadge } from '../providers-tab/key-status';
 import { ProviderLogo } from '../providers-tab/provider-logo';
@@ -173,15 +172,10 @@ function KeyNotices({
             variant="ghost"
             size="icon-xs"
             aria-label={t('Retry')}
-            disabled={keyModels[config.id]?.isFetching === true}
+            loading={keyModels[config.id]?.isFetching === true}
             onClick={() => keyModels[config.id]?.refetch()}
           >
-            <RefreshCw
-              className={cn(
-                'size-3',
-                keyModels[config.id]?.isFetching === true && 'animate-spin',
-              )}
-            />
+            <RefreshCw className="size-3" />
           </Button>
         </div>
       ))}
