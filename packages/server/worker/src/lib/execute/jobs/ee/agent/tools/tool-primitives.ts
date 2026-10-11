@@ -52,17 +52,13 @@ export async function withToolTimeout<T>({ fn, timeoutMs, toolName }: {
 }
 
 export function truncateLargeResult(result: unknown): unknown {
-    return fitResultToBudget({ result, maxBytes: MAX_TOOL_RESULT_BYTES })
-}
-
-export function fitResultToBudget({ result, maxBytes }: { result: unknown, maxBytes: number }): unknown {
     const byteSize = largeResultUtils.byteSizeOf(result)
-    if (byteSize !== null && byteSize <= maxBytes) return result
+    if (byteSize !== null && byteSize <= MAX_TOOL_RESULT_BYTES) return result
 
     const sizeNote = byteSize === null ? '' : ` The full response was ${Math.round(byteSize / 1024)}KB.`
     const fitted = largeResultUtils.fitToBudget({
         value: result,
-        maxBytes,
+        maxBytes: MAX_TOOL_RESULT_BYTES,
         wrap: (json) => buildOversizeEnvelope({
             result,
             text: `[LARGE RESPONSE — long values were truncated to fit, structure preserved]${sizeNote} Truncated values are marked with "…[truncated]".\n\n${json}`,
