@@ -242,7 +242,7 @@ function runningActivity({ title, uiParts, startedAt }: { title: string, uiParts
     return {
         title,
         status: 'running',
-        statusLine: statuses[statuses.length - 1] ?? lastToolTitle(uiParts),
+        statusLine: statuses[statuses.length - 1],
         timeline,
         stepCount: uiParts.filter((part) => part.type === PersistedAgentPartType.TOOL_CALL).length,
         pieces: piecesFrom(uiParts),
@@ -276,10 +276,6 @@ function withPageBudget(pageTool: ToolSet[string]): ToolSet[string] {
     return { ...pageTool, execute: async (input, options) => fitResultToBudget({ result: await execute(input, options), maxBytes: RESEARCH_PAGE_BYTES }) }
 }
 
-function lastToolTitle(parts: PersistedAgentPart[]): string | undefined {
-    return parts.filter(isTitledToolCall).at(-1)?.title.trim()
-}
-
 function isTitledToolCall(part: PersistedAgentPart): part is Extract<PersistedAgentPart, { type: PersistedAgentPartType.TOOL_CALL }> & { title: string } {
     return part.type === PersistedAgentPartType.TOOL_CALL && !isNil(part.title) && part.title.trim().length > 0
 }
@@ -299,7 +295,10 @@ function timelineFrom(parts: PersistedAgentPart[]): SubagentTimelineEntry[] {
         }
         const url = part.input['url']
         const pageWasRead = PAGE_READ_TOOLS.includes(part.toolName) && typeof url === 'string' && part.status === PersistedToolCallStatus.COMPLETED && returnedPage(part.output)
-        return pageWasRead ? [{ kind: 'read', url }] : []
+        if (pageWasRead) {
+            return [{ kind: 'read', url }]
+        }
+        return isTitledToolCall(part) ? [{ kind: 'status', text: part.title.trim() }] : []
     })
     const titles = new Map(entries.flatMap((entry) => entry.kind === 'search' ? entry.results : []).map((link) => [link.url, link.title]))
     return entries.map((entry) => {
