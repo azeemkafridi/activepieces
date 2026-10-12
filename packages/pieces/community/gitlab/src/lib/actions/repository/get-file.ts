@@ -1,35 +1,57 @@
 import { createAction, Property } from '@activepieces/pieces-framework';
 import { gitlabAuth } from '../../auth';
-import { encodeSegment, gitlabRequest, projectPath } from '../../common/client';
-import { GitlabFile } from '../../common/models';
+import { filePathSegment, gitlabToken, projectPath } from '../../common/client';
+import {
+  readGitlabRawPrefix,
+  sendGitlabRequest,
+} from '../../common/secret-request';
 import { gitlabProps, requireText } from '../../common/props';
 import { fileOutputSchema } from '../../output-schemas';
 
 export const MAX_FILE_TEXT_BYTES = 1_000_000;
 
-export function decodeFileContent(file: GitlabFile): {
+const UTF8_MAX_CHAR_BYTES = 4;
+
+export function decodeFilePrefix({
+  bytes,
+  complete,
+}: {
+  bytes: Buffer;
+  complete: boolean;
+}): {
   content: string | null;
   isBinary: boolean;
   truncated: boolean;
 } {
-  const bytes =
-    file.encoding === 'base64'
-      ? Buffer.from(file.content ?? '', 'base64')
-      : Buffer.from(file.content ?? '', 'utf8');
-  const sample = bytes.subarray(0, 8000);
-  if (sample.includes(0)) {
+  if (bytes.subarray(0, 8000).includes(0)) {
     return { content: null, isBinary: true, truncated: false };
   }
-  const truncated = bytes.length > MAX_FILE_TEXT_BYTES;
-  const slice = truncated ? bytes.subarray(0, MAX_FILE_TEXT_BYTES) : bytes;
+  const truncated = !complete || bytes.length > MAX_FILE_TEXT_BYTES;
+  let cut = Math.min(bytes.length, MAX_FILE_TEXT_BYTES);
+  if (truncated) {
+    const floor = Math.max(0, cut - (UTF8_MAX_CHAR_BYTES - 1));
+    while (cut > floor && (bytes[cut] & 0xc0) === 0x80) {
+      cut--;
+    }
+  }
   try {
-    const content = new TextDecoder('utf-8', { fatal: !truncated }).decode(
-      slice
+    const content = new TextDecoder('utf-8', { fatal: true }).decode(
+      bytes.subarray(0, cut)
     );
     return { content, isBinary: false, truncated };
   } catch {
     return { content: null, isBinary: true, truncated: false };
   }
+}
+
+function headerText({
+  headers,
+  name,
+}: {
+  headers: Headers;
+  name: string;
+}): string | null {
+  return headers.get(`x-gitlab-${name}`);
 }
 
 export const getFileAction = createAction({
@@ -58,33 +80,38 @@ export const getFileAction = createAction({
   },
   outputSchema: fileOutputSchema,
   async run({ auth, propsValue }) {
-    const file = await gitlabRequest<GitlabFile>({
-      auth,
-      method: 'GET',
-      path: `${projectPath(
-        propsValue.projectId
-      )}/repository/files/${encodeSegment({
-        value: propsValue.filePath,
-        label: 'File Path',
-      })}`,
-      query: {
-        ref: requireText({
-          value: propsValue.ref,
-          label: 'Branch, Tag or Commit',
-        }),
-      },
+    const filePath = `${projectPath(
+      propsValue.projectId
+    )}/repository/files/${filePathSegment(propsValue.filePath)}`;
+    const ref = requireText({
+      value: propsValue.ref,
+      label: 'Branch, Tag or Commit',
     });
-    const decoded = decodeFileContent(file);
+    const query = { ref };
+    const token = gitlabToken(auth);
+    const meta = await sendGitlabRequest<undefined>({
+      token,
+      method: 'HEAD',
+      path: filePath,
+      query,
+    });
+    const raw = await readGitlabRawPrefix({
+      request: { token, method: 'GET', path: `${filePath}/raw`, query },
+      maxBytes: MAX_FILE_TEXT_BYTES + UTF8_MAX_CHAR_BYTES,
+    });
+    const headers = meta.headers;
+    const sizeHeader = headerText({ headers, name: 'size' });
+    const size = sizeHeader === null ? NaN : Number(sizeHeader);
     return {
-      file_name: file.file_name,
-      file_path: file.file_path,
-      size: file.size,
-      ref: file.ref,
-      blob_id: file.blob_id,
-      commit_id: file.commit_id,
-      last_commit_id: file.last_commit_id,
-      content_sha256: file.content_sha256,
-      ...decoded,
+      file_name: propsValue.filePath.split('/').pop() ?? propsValue.filePath,
+      file_path: propsValue.filePath,
+      size: Number.isFinite(size) ? size : raw.bytes.length,
+      ref,
+      blob_id: headerText({ headers, name: 'blob-id' }),
+      commit_id: headerText({ headers, name: 'commit-id' }),
+      last_commit_id: headerText({ headers, name: 'last-commit-id' }),
+      content_sha256: headerText({ headers, name: 'content-sha256' }),
+      ...decodeFilePrefix(raw),
     };
   },
 });
