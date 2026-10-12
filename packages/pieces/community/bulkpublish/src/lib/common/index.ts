@@ -7,23 +7,6 @@ import {
 } from '@activepieces/pieces-common';
 import { PieceAuth, Property } from '@activepieces/pieces-framework';
 
-export const BULKPUBLISH_BASE_URL = 'https://app.bulkpublish.com';
-
-export const bulkpublishAuth = PieceAuth.SecretText({
-  displayName: 'API Key',
-  description:
-    'Create an API key at https://app.bulkpublish.com/developer. It starts with `bp_`.',
-  required: true,
-  validate: async ({ auth }) => {
-    try {
-      await bpRequest(auth, HttpMethod.GET, '/api/channels');
-      return { valid: true };
-    } catch (e) {
-      return { valid: false, error: 'Invalid API key, or BulkPublish could not be reached.' };
-    }
-  },
-});
-
 export async function bpRequest<T extends HttpMessageBody = HttpMessageBody>(
   apiKey: string,
   method: HttpMethod,
@@ -35,30 +18,41 @@ export async function bpRequest<T extends HttpMessageBody = HttpMessageBody>(
     method,
     url: `${BULKPUBLISH_BASE_URL}${path}`,
     authentication: { type: AuthenticationType.BEARER_TOKEN, token: apiKey },
-    headers: { 'Content-Type': 'application/json' },
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body,
     queryParams,
   });
   return res.body;
 }
 
-export interface BpPost {
-  id: number;
-  status: string;
-  content?: string;
-  scheduledAt?: string | null;
-  publishedAt?: string | null;
-  createdAt: string;
-  [key: string]: unknown;
-}
-
-export async function listPosts(apiKey: string, status: string, limit = 100): Promise<BpPost[]> {
-  const res = await bpRequest<{ posts: BpPost[] }>(apiKey, HttpMethod.GET, '/api/posts', undefined, {
+export async function listPosts(apiKey: string, status: string, limit = 100, page = 1): Promise<BpPostPage> {
+  const res = await bpRequest<{ posts?: BpPost[]; totalPages?: number }>(apiKey, HttpMethod.GET, '/api/posts', undefined, {
     status,
     limit: String(limit),
-    page: '1',
+    page: String(page),
   });
-  return res.posts ?? [];
+  return { posts: res.posts ?? [], totalPages: res.totalPages ?? 1 };
+}
+
+/**
+ * Walks pages (newest first) until a page holds only already-seen IDs, the last page is reached,
+ * or maxPages is hit, so more than one page of new posts between polls is not lost.
+ */
+export async function listPostsPaged(
+  apiKey: string,
+  status: string,
+  isSeen: (id: number) => boolean,
+  pageSize = 100,
+  maxPages = 20
+): Promise<BpPost[]> {
+  const all: BpPost[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const { posts, totalPages } = await listPosts(apiKey, status, pageSize, page);
+    all.push(...posts);
+    const allSeen = posts.every((p) => isSeen(p.id));
+    if (posts.length < pageSize || page >= totalPages || allSeen) break;
+  }
+  return all;
 }
 
 export const channelsDropdown = (required: boolean) =>
@@ -86,6 +80,35 @@ export const channelsDropdown = (required: boolean) =>
       };
     },
   });
+
+export const BULKPUBLISH_BASE_URL = 'https://app.bulkpublish.com';
+
+export const bulkpublishAuth = PieceAuth.SecretText({
+  displayName: 'API Key',
+  description:
+    'Create an API key at https://app.bulkpublish.com/developer. It starts with `bp_`.',
+  required: true,
+  validate: async ({ auth }) => {
+    try {
+      await bpRequest(auth, HttpMethod.GET, '/api/channels');
+      return { valid: true };
+    } catch (e) {
+      return { valid: false, error: 'Invalid API key, or BulkPublish could not be reached.' };
+    }
+  },
+});
+
+export interface BpPost {
+  id: number;
+  status: string;
+  content?: string;
+  scheduledAt?: string | null;
+  publishedAt?: string | null;
+  createdAt: string;
+  [key: string]: unknown;
+}
+
+export type BpPostPage = { posts: BpPost[]; totalPages: number };
 
 export const postIdProp = Property.Number({
   displayName: 'Post ID',

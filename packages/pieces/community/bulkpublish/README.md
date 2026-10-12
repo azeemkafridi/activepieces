@@ -18,7 +18,7 @@ Drop this folder into `packages/pieces/community/bulkpublish` of activepieces/ac
 
 ## Test steps
 1. `npm ci` in the monorepo, then add `pieces-bulkpublish` to `AP_DEV_PIECES` in `packages/server/api/.env`. Run `npm start`.
-2. `npx nx build pieces-bulkpublish` and `npx nx lint pieces-bulkpublish`.
+2. `npx turbo run build lint --filter=@activepieces/piece-bulkpublish`.
 3. In the builder, add a BulkPublish connection. A bad key should be rejected and a real key accepted.
 4. **List Channels** should return your connected accounts. The Channels dropdown in Create Post should fill with the same list.
 5. **Create Post** as a draft, then **Get Post** with the returned ID. `status` should be `draft`.

@@ -7,6 +7,10 @@ export const retryPost = createAction({
   name: 'retry_post',
   displayName: 'Retry Failed Post',
   description: 'Retry the platforms that failed for a post.',
+  errorHandlingOptions: {
+    retryOnFailure: { hide: true, defaultValue: false },
+    continueOnFailure: { defaultValue: false },
+  },
   props: {
     postId: postIdProp,
     republish: Property.Checkbox({

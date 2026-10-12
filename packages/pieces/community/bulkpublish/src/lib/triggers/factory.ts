@@ -1,5 +1,5 @@
 import { createTrigger, TriggerStrategy } from '@activepieces/pieces-framework';
-import { BpPost, bulkpublishAuth, listPosts } from '../common';
+import { BpPost, bulkpublishAuth, listPosts, listPostsPaged } from '../common';
 
 const SAMPLE: BpPost = {
   id: 12345,
@@ -16,10 +16,10 @@ const SAMPLE: BpPost = {
 };
 
 const SEEN_KEY = 'bp_seen_post_ids';
-const MAX_SEEN = 2000;
+const MAX_SEEN = 5000;
 
 /**
- * Polls GET /api/posts?status=<status>&limit=100. The API has no webhooks, no sort parameter and no
+ * Polls GET /api/posts?status=<status>&limit=100, following pages (newest first) until a page has no unseen IDs. The API has no webhooks, no sort parameter and no
  * "status changed since" filter, so we dedupe by post ID in the trigger store: on enable we record the
  * IDs currently in that status (no backfill), and each poll emits IDs we have not seen before.
  * A post that leaves and re-enters the status (e.g. failed -> retried -> failed) will not fire twice.
@@ -40,15 +40,15 @@ export function makePostStatusTrigger(opts: {
     type: TriggerStrategy.POLLING,
     sampleData: { ...SAMPLE, status: opts.sampleStatus },
     async onEnable(context) {
-      const posts = await listPosts(context.auth.secret_text, opts.status, 100);
-      await context.store.put<number[]>(SEEN_KEY, posts.map((p) => p.id));
+      const posts = await listPostsPaged(context.auth.secret_text, opts.status, () => false, 100, MAX_SEEN / 100);
+      await context.store.put<number[]>(SEEN_KEY, posts.map((p) => p.id).slice(0, MAX_SEEN));
     },
     async onDisable(context) {
       await context.store.delete(SEEN_KEY);
     },
     async run(context) {
       const seen = new Set((await context.store.get<number[]>(SEEN_KEY)) ?? []);
-      const posts = await listPosts(context.auth.secret_text, opts.status, 100);
+      const posts = await listPostsPaged(context.auth.secret_text, opts.status, (id) => seen.has(id));
       const fresh = posts.filter((p) => !seen.has(p.id));
       if (fresh.length) {
         const merged = [...fresh.map((p) => p.id), ...seen].slice(0, MAX_SEEN);
@@ -57,7 +57,7 @@ export function makePostStatusTrigger(opts: {
       return fresh;
     },
     async test(context) {
-      return listPosts(context.auth.secret_text, opts.status, 5);
+      return (await listPosts(context.auth.secret_text, opts.status, 5)).posts;
     },
   });
 }

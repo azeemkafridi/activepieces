@@ -6,7 +6,7 @@ export const updatePost = createAction({
   auth: bulkpublishAuth,
   name: 'update_post',
   displayName: 'Update Post',
-  description: 'Edit a post. Only the fields you fill in are sent. Channels, if given, replace the full channel list.',
+  description: 'Edit a post. Only the fields you fill in are sent. Channels, media and labels, if given (even empty), replace the full list.',
   props: {
     postId: postIdProp,
     content: Property.LongText({ displayName: 'Content', required: false }),
@@ -26,9 +26,9 @@ export const updatePost = createAction({
     if (propsValue.content) body['content'] = propsValue.content;
     if (propsValue.status) body['status'] = propsValue.status;
     if (propsValue.scheduledAt) body['scheduledAt'] = propsValue.scheduledAt;
-    if (propsValue.channels?.length) body['channels'] = (propsValue.channels as number[]).map((id) => ({ channelId: Number(id) }));
-    if (propsValue.mediaFiles?.length) body['mediaFiles'] = propsValue.mediaFiles.map(Number);
-    if (propsValue.labels?.length) body['labels'] = propsValue.labels.map(Number);
+    if (propsValue.channels != null) body['channels'] = (propsValue.channels as number[]).map((id) => ({ channelId: Number(id) }));
+    if (propsValue.mediaFiles != null) body['mediaFiles'] = propsValue.mediaFiles.map(Number);
+    if (propsValue.labels != null) body['labels'] = propsValue.labels.map(Number);
     return bpRequest(auth.secret_text, HttpMethod.PUT, `/api/posts/${propsValue.postId}`, body);
   },
 });

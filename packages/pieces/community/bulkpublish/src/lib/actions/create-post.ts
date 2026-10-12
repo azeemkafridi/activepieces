@@ -9,6 +9,10 @@ export const createPost = createAction({
   name: 'create_post',
   displayName: 'Create Post',
   description: 'Create a post on one or more channels and publish it now, schedule it, or save it as a draft.',
+  errorHandlingOptions: {
+    retryOnFailure: { hide: true, defaultValue: false },
+    continueOnFailure: { defaultValue: false },
+  },
   props: {
     channels: channelsDropdown(true),
     content: Property.LongText({ displayName: 'Content', description: 'Post text. Optional if media is attached.', required: false }),
